@@ -21,6 +21,7 @@
     <section id="viewList" class="view">
       <div class="toolbar">
         <input id="searchInput" type="search" placeholder="Search by title..." />
+
         <select id="statusFilter">
           <option value="ALL">All Statuses</option>
           <option value="Planned">Planned</option>
@@ -28,6 +29,24 @@
           <option value="Completed">Completed</option>
           <option value="Dropped">Dropped</option>
         </select>
+
+        <select id="sortSelect" title="Sort by">
+          <option value="title:asc">Title (A→Z)</option>
+          <option value="title:desc">Title (Z→A)</option>
+          <option value="year:desc">Year (Newest)</option>
+          <option value="year:asc">Year (Oldest)</option>
+          <option value="rating:desc">Rating (High→Low)</option>
+          <option value="rating:asc">Rating (Low→High)</option>
+          <option value="genre:asc">Genre (A→Z)</option>
+        </select>
+
+        <select id="pageSizeSelect" title="Page size">
+          <option value="5">5 / page</option>
+          <option value="10">10 / page</option>
+          <option value="20">20 / page</option>
+          <option value="50">50 / page</option>
+        </select>
+
         <button id="newBtn" class="primary">+ New Record</button>
       </div>
 
@@ -35,6 +54,7 @@
         <table>
           <thead>
             <tr>
+              <th>Image</th>
               <th>Title</th>
               <th>Type</th>
               <th>Genre</th>
@@ -48,7 +68,6 @@
         </table>
       </div>
 
-      <!-- ✅ REQUIRED: Paging controls -->
       <div class="pager">
         <button id="prevPage">Previous</button>
         <span id="pageIndicator">Page 1 of 1</span>
@@ -68,7 +87,7 @@
           <input id="recordId" type="hidden" />
 
           <label>
-            Title * 
+            Title *
             <input id="title" type="text" placeholder="e.g., The Dark Knight" required />
           </label>
 
@@ -113,6 +132,11 @@
           </label>
 
           <label>
+            Image URL *
+            <input id="image_url" type="url" placeholder="https://example.com/poster.jpg" required />
+          </label>
+
+          <label>
             Notes
             <textarea id="notes" rows="3" placeholder="Anything you want to remember..."></textarea>
           </label>
@@ -137,8 +161,8 @@
         </div>
 
         <div class="statCard">
-          <div class="statLabel">Completed</div>
-          <div id="statCompleted" class="statValue">—</div>
+          <div class="statLabel">Current Page Size</div>
+          <div id="statPageSize" class="statValue">—</div>
         </div>
 
         <div class="statCard">
