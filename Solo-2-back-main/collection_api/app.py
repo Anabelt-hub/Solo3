@@ -1,6 +1,5 @@
 import os
 import uuid
-from urllib.parse import urlparse
 
 import psycopg
 from psycopg.rows import dict_row
@@ -12,63 +11,67 @@ CORS(app)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
-# -------------------- DB helpers --------------------
+
+# ------------------------------ DB helpers ------------------------------
 def get_db():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL env var is missing.")
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
+    return psycopg.connect(
+        DATABASE_URL,
+        sslmode="require",
+        row_factory=dict_row
+    )
 
 
 def init_db():
-    """Create table + seed >= 30 records if empty."""
+    """Create table if missing + ensure at least 30 seeded rows."""
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS records (
-        id UUID PRIMARY KEY,
-        title TEXT NOT NULL,
-        type TEXT NOT NULL,
-        genre TEXT NOT NULL,
-        year INT NOT NULL,
-        rating INT,
-        status TEXT NOT NULL,
-        notes TEXT,
-        image_url TEXT NOT NULL DEFAULT ''
-    );
+        CREATE TABLE IF NOT EXISTS records (
+            id UUID PRIMARY KEY,
+            title TEXT NOT NULL,
+            type TEXT NOT NULL,
+            genre TEXT NOT NULL,
+            year INT NOT NULL,
+            rating INT,
+            status TEXT NOT NULL,
+            notes TEXT,
+            image_url TEXT NOT NULL DEFAULT ''
+        );
     """)
     conn.commit()
 
-    cur.execute("SELECT COUNT(*) FROM records;")
-    count = cur.fetchone()[0] or 0
+    cur.execute("SELECT COUNT(*) AS c FROM records;")
+    count = int(cur.fetchone()["c"])
 
     if count < 30:
-        # If there are some records but less than 30, we'll top up to 30.
         seeds = seed_records()
-        needed = max(30 - count, 0)
-        seeds = seeds[:needed]
+        need = 30 - count
+        to_insert = seeds[:need]
 
-        if needed > 0:
-            args = [
-                (
-                    s["id"],
-                    s["title"],
-                    s["type"],
-                    s["genre"],
-                    s["year"],
-                    s["rating"],
-                    s["status"],
-                    s["notes"],
-                    s["image_url"],
-                )
-                for s in seeds
-            ]
-            psycopg2.extras.execute_values(
-                cur,
+        if to_insert:
+            rows = []
+            for r in to_insert:
+                rows.append((
+                    uuid.UUID(r["id"]),
+                    r["title"],
+                    r["type"],
+                    r["genre"],
+                    r["year"],
+                    r["rating"],
+                    r["status"],
+                    r["notes"],
+                    r["image_url"],
+                ))
+
+            cur.executemany(
                 """
                 INSERT INTO records (id, title, type, genre, year, rating, status, notes, image_url)
-                VALUES %s
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
-                args
+                rows
             )
             conn.commit()
 
@@ -77,7 +80,7 @@ def init_db():
 
 
 def seed_records():
-    """Return realistic watchlist records with image_url (>= 35)."""
+    """Return >= 35 records with image_url (so seeding has enough)."""
     def rec(title, rtype, genre, year, rating, status, image_url, notes=""):
         return {
             "id": str(uuid.uuid4()),
@@ -91,7 +94,7 @@ def seed_records():
             "image_url": image_url
         }
 
-    # Public poster-like images (Wikipedia poster files are usually stable; you can replace anytime)
+    # Public image URLs (you can swap anytime)
     return [
         rec("The Dark Knight", "Movie", "Action", 2008, 9, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/8/8a/Dark_Knight.jpg"),
@@ -113,10 +116,6 @@ def seed_records():
             "https://upload.wikimedia.org/wikipedia/en/d/db/Spirited_Away_Japanese_poster.png"),
         rec("Avengers: Endgame", "Movie", "Action", 2019, 8, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/0/0d/Avengers_Endgame_poster.jpg"),
-        rec("Spider-Man: Into the Spider-Verse", "Movie", "Animation", 2018, 9, "Completed",
-            "https://upload.wikimedia.org/wikipedia/en/8/87/Spider-Man_Into_the_Spider-Verse_poster.png"),
-        rec("The Lion King", "Movie", "Animation", 1994, 9, "Completed",
-            "https://upload.wikimedia.org/wikipedia/en/3/3d/The_Lion_King_poster.jpg"),
         rec("Dune", "Movie", "Sci-Fi", 2021, 8, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/8/8e/Dune_%282021_film%29.jpg"),
         rec("Oppenheimer", "Movie", "Drama", 2023, 9, "Completed",
@@ -125,14 +124,8 @@ def seed_records():
             "https://upload.wikimedia.org/wikipedia/en/0/0b/Barbie_2023_poster.jpg"),
         rec("Top Gun: Maverick", "Movie", "Action", 2022, 8, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/1/13/Top_Gun_Maverick_Poster.jpg"),
-        rec("The Social Network", "Movie", "Drama", 2010, 8, "Completed",
-            "https://upload.wikimedia.org/wikipedia/en/8/8c/The_Social_Network_film_poster.png"),
-        rec("La La Land", "Movie", "Romance", 2016, 8, "Completed",
-            "https://upload.wikimedia.org/wikipedia/en/a/ab/La_La_Land_%28film%29.png"),
         rec("Knives Out", "Movie", "Mystery", 2019, 8, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/1/1f/Knives_Out_poster.jpeg"),
-        rec("The Grand Budapest Hotel", "Movie", "Comedy", 2014, 8, "Completed",
-            "https://upload.wikimedia.org/wikipedia/en/a/a6/The_Grand_Budapest_Hotel_Poster.jpg"),
 
         rec("Breaking Bad", "Show", "Drama", 2008, 10, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/6/61/Breaking_Bad_title_card.png"),
@@ -148,10 +141,24 @@ def seed_records():
             "https://upload.wikimedia.org/wikipedia/en/7/75/House_of_the_Dragon_logo.jpg"),
         rec("The Mandalorian", "Show", "Sci-Fi", 2019, 8, "Watching",
             "https://upload.wikimedia.org/wikipedia/en/c/c1/The_Mandalorian_season_1_poster.jpg"),
-        rec("The Witcher", "Show", "Fantasy", 2019, 7, "Watching",
-            "https://upload.wikimedia.org/wikipedia/en/0/06/The_Witcher_title_card.png"),
         rec("Black Mirror", "Show", "Sci-Fi", 2011, 9, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/2/24/BlackMirrorTitleCard.jpg"),
+        rec("Chernobyl", "Show", "Drama", 2019, 10, "Completed",
+            "https://upload.wikimedia.org/wikipedia/en/9/9f/Chernobyl_2019_Miniseries.jpg"),
+        rec("The Walking Dead", "Show", "Horror", 2010, 7, "Dropped",
+            "https://upload.wikimedia.org/wikipedia/en/0/0e/TheWalkingDeadPoster.jpg"),
+
+        # Extra to ensure we have enough to seed even if some already exist
+        rec("The Grand Budapest Hotel", "Movie", "Comedy", 2014, 8, "Completed",
+            "https://upload.wikimedia.org/wikipedia/en/a/a6/The_Grand_Budapest_Hotel_Poster.jpg"),
+        rec("La La Land", "Movie", "Romance", 2016, 8, "Completed",
+            "https://upload.wikimedia.org/wikipedia/en/a/ab/La_La_Land_%28film%29.png"),
+        rec("The Social Network", "Movie", "Drama", 2010, 8, "Completed",
+            "https://upload.wikimedia.org/wikipedia/en/8/8c/The_Social_Network_film_poster.png"),
+        rec("Spider-Man: Into the Spider-Verse", "Movie", "Animation", 2018, 9, "Completed",
+            "https://upload.wikimedia.org/wikipedia/en/8/87/Spider-Man_Into_the_Spider-Verse_poster.png"),
+        rec("The Lion King", "Movie", "Animation", 1994, 9, "Completed",
+            "https://upload.wikimedia.org/wikipedia/en/3/3d/The_Lion_King_poster.jpg"),
         rec("The Boys", "Show", "Action", 2019, 8, "Watching",
             "https://upload.wikimedia.org/wikipedia/en/7/7a/The_Boys_Season_1.jpg"),
         rec("The Crown", "Show", "Drama", 2016, 8, "Planned",
@@ -160,14 +167,10 @@ def seed_records():
             "https://upload.wikimedia.org/wikipedia/en/2/2c/The_Sopranos_title_card.jpg"),
         rec("Narcos", "Show", "Drama", 2015, 8, "Completed",
             "https://upload.wikimedia.org/wikipedia/en/1/1f/Narcos_season_1.png"),
-        rec("The Walking Dead", "Show", "Horror", 2010, 7, "Dropped",
-            "https://upload.wikimedia.org/wikipedia/en/0/0e/TheWalkingDeadPoster.jpg"),
-        rec("Chernobyl", "Show", "Drama", 2019, 10, "Completed",
-            "https://upload.wikimedia.org/wikipedia/en/9/9f/Chernobyl_2019_Miniseries.jpg"),
     ]
 
 
-# -------------------- Validation --------------------
+# ------------------------------ Validation ------------------------------
 def validate_record(data):
     title = (data.get("title") or "").strip()
     if not title:
@@ -208,24 +211,35 @@ def validate_record(data):
     return None
 
 
-# -------------------- Routes --------------------
+def parse_uuid(s):
+    try:
+        return uuid.UUID(str(s))
+    except Exception:
+        return None
+
+
+def serialize_record(row: dict) -> dict:
+    # psycopg returns UUID objects; jsonify needs strings
+    out = dict(row)
+    if "id" in out:
+        out["id"] = str(out["id"])
+    return out
+
+
+# ------------------------------ Routes ------------------------------
 @app.get("/")
 def home():
-    return "Solo Project 3 API is running. Try /api/records and /api/stats", 200
+    return "Solo Project 3 API running. Try /api/records and /api/stats", 200
 
 
 @app.get("/api/records")
 def get_records():
     """
-    Supports:
+    Query params:
       page, pageSize, search, status, sort, dir
-
-    Returns:
-      { items, page, pageSize, total, totalPages }
     """
     init_db()
 
-    # Query params
     page = int(request.args.get("page", 1))
     page_size = int(request.args.get("pageSize", 10))
     page_size = max(5, min(page_size, 50))
@@ -236,7 +250,6 @@ def get_records():
     sort = (request.args.get("sort") or "title").strip()
     direction = (request.args.get("dir") or "asc").strip().lower()
 
-    # Whitelist sorting columns (avoid SQL injection)
     allowed_sort = {
         "title": "title",
         "year": "year",
@@ -248,32 +261,30 @@ def get_records():
     sort_col = allowed_sort.get(sort, "title")
     dir_sql = "ASC" if direction != "desc" else "DESC"
 
-    where_clauses = []
+    where = []
     params = []
 
     if search:
-        where_clauses.append("LOWER(title) LIKE %s")
+        where.append("LOWER(title) LIKE %s")
         params.append(f"%{search}%")
 
     if status != "ALL":
-        where_clauses.append("status = %s")
+        where.append("status = %s")
         params.append(status)
 
-    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
-    # Total count (for paging)
+    # Total for paging
     cur.execute(f"SELECT COUNT(*) AS c FROM records {where_sql};", params)
     total = int(cur.fetchone()["c"])
     total_pages = max(1, (total + page_size - 1) // page_size)
 
-    # Clamp page
     page = max(1, min(page, total_pages))
     offset = (page - 1) * page_size
 
-    # Data query
     cur.execute(
         f"""
         SELECT id, title, type, genre, year, rating, status, notes, image_url
@@ -282,9 +293,9 @@ def get_records():
         ORDER BY {sort_col} {dir_sql}, title ASC
         LIMIT %s OFFSET %s;
         """,
-        params + [page_size, offset],
+        params + [page_size, offset]
     )
-    items = cur.fetchall()
+    items = [serialize_record(r) for r in cur.fetchall()]
 
     cur.close()
     conn.close()
@@ -300,15 +311,11 @@ def get_records():
 
 @app.get("/api/stats")
 def get_stats():
-    """
-    Stats for the ENTIRE dataset (not just current page).
-    Returns:
-      totalRecords, completedCount, avgRatingCompleted, topGenre, byStatus
-    """
+    """Stats for the ENTIRE dataset."""
     init_db()
 
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     cur.execute("SELECT COUNT(*) AS c FROM records;")
     total = int(cur.fetchone()["c"])
@@ -317,38 +324,30 @@ def get_stats():
     completed_count = int(cur.fetchone()["c"])
 
     cur.execute("""
-      SELECT AVG(rating) AS avg
-      FROM records
-      WHERE status='Completed' AND rating IS NOT NULL;
+        SELECT AVG(rating) AS avg
+        FROM records
+        WHERE status='Completed' AND rating IS NOT NULL;
     """)
     avg = cur.fetchone()["avg"]
     avg_rating_completed = round(float(avg), 1) if avg is not None else None
 
-    # Most common genre
     cur.execute("""
-      SELECT genre, COUNT(*) AS c
-      FROM records
-      WHERE genre IS NOT NULL AND genre <> ''
-      GROUP BY genre
-      ORDER BY c DESC, genre ASC
-      LIMIT 1;
+        SELECT genre, COUNT(*) AS c
+        FROM records
+        WHERE genre IS NOT NULL AND genre <> ''
+        GROUP BY genre
+        ORDER BY c DESC, genre ASC
+        LIMIT 1;
     """)
     row = cur.fetchone()
     top_genre = row["genre"] if row else None
 
-    # Status breakdown
     statuses = ["Planned", "Watching", "Completed", "Dropped"]
     by_status = {s: 0 for s in statuses}
-
-    cur.execute("""
-      SELECT status, COUNT(*) AS c
-      FROM records
-      GROUP BY status;
-    """)
+    cur.execute("SELECT status, COUNT(*) AS c FROM records GROUP BY status;")
     for r in cur.fetchall():
-        s = r["status"]
-        if s in by_status:
-            by_status[s] = int(r["c"])
+        if r["status"] in by_status:
+            by_status[r["status"]] = int(r["c"])
 
     cur.close()
     conn.close()
@@ -371,8 +370,10 @@ def create_record():
     if err:
         return jsonify({"error": err}), 400
 
-    new_rec = {
-        "id": str(uuid.uuid4()),
+    new_id = uuid.uuid4()
+
+    record = {
+        "id": str(new_id),
         "title": (data.get("title") or "").strip(),
         "type": (data.get("type") or "").strip(),
         "genre": (data.get("genre") or "").strip(),
@@ -389,26 +390,30 @@ def create_record():
         INSERT INTO records (id, title, type, genre, year, rating, status, notes, image_url)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);
     """, (
-        new_rec["id"],
-        new_rec["title"],
-        new_rec["type"],
-        new_rec["genre"],
-        new_rec["year"],
-        new_rec["rating"],
-        new_rec["status"],
-        new_rec["notes"],
-        new_rec["image_url"],
+        new_id,
+        record["title"],
+        record["type"],
+        record["genre"],
+        record["year"],
+        record["rating"],
+        record["status"],
+        record["notes"],
+        record["image_url"],
     ))
     conn.commit()
     cur.close()
     conn.close()
 
-    return jsonify(new_rec), 201
+    return jsonify(record), 201
 
 
 @app.put("/api/records/<rid>")
 def update_record(rid):
     init_db()
+
+    rid_uuid = parse_uuid(rid)
+    if not rid_uuid:
+        return jsonify({"error": "Invalid record id."}), 400
 
     data = request.get_json(force=True) or {}
     err = validate_record(data)
@@ -431,8 +436,9 @@ def update_record(rid):
         (data.get("status") or "").strip(),
         (data.get("notes") or "").strip(),
         (data.get("image_url") or "").strip(),
-        rid
+        rid_uuid,
     ))
+
     updated = cur.rowcount
     conn.commit()
     cur.close()
@@ -448,9 +454,13 @@ def update_record(rid):
 def delete_record(rid):
     init_db()
 
+    rid_uuid = parse_uuid(rid)
+    if not rid_uuid:
+        return jsonify({"error": "Invalid record id."}), 400
+
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("DELETE FROM records WHERE id=%s;", (rid,))
+    cur.execute("DELETE FROM records WHERE id=%s;", (rid_uuid,))
     deleted = cur.rowcount
     conn.commit()
     cur.close()
@@ -463,8 +473,7 @@ def delete_record(rid):
 
 
 if __name__ == "__main__":
-    # Local dev only:
+    # Local dev
     port = int(os.environ.get("PORT", "5000"))
     init_db()
     app.run(host="0.0.0.0", port=port)
-
