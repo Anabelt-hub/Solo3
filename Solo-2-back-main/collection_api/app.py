@@ -2,8 +2,8 @@ import os
 import uuid
 from urllib.parse import urlparse
 
-import psycopg2
-import psycopg2.extras
+import psycopg
+from psycopg.rows import dict_row
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -467,3 +467,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     init_db()
     app.run(host="0.0.0.0", port=port)
+
