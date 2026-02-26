@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Collection Manager - Watchlist</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Watchlist Collection Manager</h1>
+    <nav class="tabs">
+      <button id="tabList" class="tab active">List</button>
+      <button id="tabForm" class="tab">Add / Edit</button>
+      <button id="tabStats" class="tab">Stats</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- LIST VIEW -->
+    <section id="viewList" class="view">
+      <div class="toolbar">
+        <input id="searchInput" type="search" placeholder="Search by title..." />
+        <select id="statusFilter">
+          <option value="ALL">All Statuses</option>
+          <option value="Planned">Planned</option>
+          <option value="Watching">Watching</option>
+          <option value="Completed">Completed</option>
+          <option value="Dropped">Dropped</option>
+        </select>
+        <button id="newBtn" class="primary">+ New Record</button>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Type</th>
+              <th>Genre</th>
+              <th>Year</th>
+              <th>Rating</th>
+              <th>Status</th>
+              <th class="right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="recordsTbody"></tbody>
+        </table>
+      </div>
+
+      <!-- ✅ REQUIRED: Paging controls -->
+      <div class="pager">
+        <button id="prevPage">Previous</button>
+        <span id="pageIndicator">Page 1 of 1</span>
+        <button id="nextPage">Next</button>
+      </div>
+    </section>
+
+    <!-- FORM VIEW -->
+    <section id="viewForm" class="view hidden">
+      <div class="card">
+        <div class="cardHeader">
+          <h2 id="formTitle">Add Record</h2>
+          <p class="muted">Fields marked with * are required.</p>
+        </div>
+
+        <form id="recordForm" class="form">
+          <input id="recordId" type="hidden" />
+
+          <label>
+            Title * 
+            <input id="title" type="text" placeholder="e.g., The Dark Knight" required />
+          </label>
+
+          <label>
+            Type *
+            <select id="type" required>
+              <option value="">Select...</option>
+              <option value="Movie">Movie</option>
+              <option value="Show">Show</option>
+              <option value="Anime">Anime</option>
+              <option value="Book">Book</option>
+              <option value="Game">Game</option>
+            </select>
+          </label>
+
+          <label>
+            Genre *
+            <input id="genre" type="text" placeholder="e.g., Action" required />
+          </label>
+
+          <div class="grid2">
+            <label>
+              Year *
+              <input id="year" type="number" min="1900" max="2100" required />
+            </label>
+
+            <label>
+              Rating (1–10)
+              <input id="rating" type="number" min="1" max="10" />
+            </label>
+          </div>
+
+          <label>
+            Status *
+            <select id="status" required>
+              <option value="">Select...</option>
+              <option value="Planned">Planned</option>
+              <option value="Watching">Watching</option>
+              <option value="Completed">Completed</option>
+              <option value="Dropped">Dropped</option>
+            </select>
+          </label>
+
+          <label>
+            Notes
+            <textarea id="notes" rows="3" placeholder="Anything you want to remember..."></textarea>
+          </label>
+
+          <div id="formError" class="error hidden"></div>
+
+          <div class="actions">
+            <button id="saveBtn" class="primary" type="submit">Save</button>
+            <button id="cancelBtn" type="button">Cancel</button>
+            <button id="deleteBtn" class="danger hidden" type="button">Delete</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- STATS VIEW -->
+    <section id="viewStats" class="view hidden">
+      <div class="statsGrid">
+        <div class="statCard">
+          <div class="statLabel">Total Records (All)</div>
+          <div id="statTotal" class="statValue">—</div>
+        </div>
+
+        <div class="statCard">
+          <div class="statLabel">Completed</div>
+          <div id="statCompleted" class="statValue">—</div>
+        </div>
+
+        <div class="statCard">
+          <div class="statLabel">Avg Rating (Completed)</div>
+          <div id="statAvgRating" class="statValue">—</div>
+        </div>
+
+        <div class="statCard">
+          <div class="statLabel">Most Common Genre</div>
+          <div id="statTopGenre" class="statValue">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Status Breakdown</h3>
+        <ul id="statusBreakdown" class="breakdown"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
