@@ -1,53 +1,57 @@
-# DEPLOYMENT (Solo Project 3)
+2. Render Web Service is connected to the GitHub repository.
+3. Render configuration:
+- Root Directory:
+  ```
+  Solo-2-back-main/collection_api
+  ```
+- Build Command:
+  ```
+  pip install -r requirements.txt
+  ```
+- Start Command:
+  ```
+  gunicorn app:app
+  ```
+4. Any push to the `main` branch automatically redeploys the backend.
 
-## Domain + Registrar
-- Domain: YOURDOMAIN.com
-- Registrar: (Namecheap / Google Domains / etc.)
+---
 
-## Hosting Provider
-- Frontend: Netlify (static site)
-- Backend: Render (Flask API)
-- Database: Render PostgreSQL
+## How configuration and secrets are managed (environment variables)
 
-## Tech Stack
-- Frontend: HTML/CSS/JS (Netlify)
-- Backend: Python Flask (Render)
-- Database: PostgreSQL (Render)
-- Images: image_url per record + placeholder fallback
+Sensitive information is NOT stored in the repository.
 
-## Environment Variables / Secrets
-Configured in Render (NOT committed to Git):
-- DATABASE_URL = (Render Postgres “Internal Database URL”)
-- (optional) PORT set automatically by Render
+Secrets are configured in Render using environment variables:
 
-## Seeding
-- Backend seeds at least 30 records automatically if DB has fewer than 30.
+- **DATABASE_URL**
+- Stores the PostgreSQL connection string
+- Provided by Render PostgreSQL service
+- Used by the Flask backend to connect to the database
 
-## How to Deploy / Update
+Render automatically injects environment variables securely at runtime.
 
-### Backend (Render)
-1. Create a new Render Web Service connected to your GitHub repo.
-2. Build command:
-   - `pip install -r requirements.txt`
-3. Start command:
-   - `gunicorn app:app`
-4. Add environment variable:
-   - `DATABASE_URL` from your Render Postgres instance.
-5. Deploy.
+No database credentials are committed to GitHub.
 
-### Frontend (Netlify)
-1. Deploy the `frontend/` folder on Netlify.
-2. Set your custom domain in Netlify.
-3. Ensure HTTPS is enabled (Netlify will handle certs).
-4. Update `frontend/app.js`:
-   - `API_BASE = "https://YOUR-RENDER-BACKEND.onrender.com"`
+---
 
-## Verification Checklist (Incognito)
-- App loads on custom domain with HTTPS
-- List view shows images (broken URL -> placeholder)
-- Search/filter works
-- Sorting works
-- Paging works
-- Page size persists after refresh (cookie)
-- CRUD works and persists (SQL)
-- Stats shows total records + current page size + domain stat
+## Live URLs
+
+- **Frontend:**  
+https://collection-manager.netlify.app
+
+- **Backend API:**  
+https://solo3.onrender.com
+
+---
+
+## Verification
+
+The application supports:
+
+- Full CRUD operations using PostgreSQL  
+- Paging with configurable page size  
+- Page size stored and restored via cookies  
+- Search and filtering  
+- Sorting  
+- Image display per record  
+- Stats view using database queries  
+- Public HTTPS access  
