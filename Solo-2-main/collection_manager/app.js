@@ -10,7 +10,7 @@
  * ✅ Stats shows: total records + current page size + domain stat
  */
 
-const API_BASE = "https://YOUR-BACKEND.onrender.com"; // <-- CHANGE THIS
+const API_BASE = "https://solo3.onrender.com"; // <-- CHANGE THIS
 
 const el = (id) => document.getElementById(id);
 
@@ -506,3 +506,4 @@ if (document.readyState === "loading") {
 } else {
   init();
 }
+
