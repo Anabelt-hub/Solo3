@@ -1,17 +1,34 @@
 "use strict";
 
 /**
- * Solo Project 2 Frontend
- * ✅ All data via backend (no localStorage)
+ * Solo Project 3 Frontend
+ * ✅ SQL-backed backend
  * ✅ CRUD via fetch()
- * ✅ Paging (10/page) + Next/Prev + indicator
- * ✅ Stats via /api/stats (entire dataset)
+ * ✅ Paging (configurable) + cookie persistence (pageSize)
+ * ✅ Search/filter + Sorting
+ * ✅ List view shows images with placeholder
+ * ✅ Stats shows: total records + current page size + domain stat
  */
 
-const API_BASE = "https://solo-2-back.onrender.com"; // <-- CHANGE THIS
+const API_BASE = "https://YOUR-BACKEND.onrender.com"; // <-- CHANGE THIS
 
 const el = (id) => document.getElementById(id);
 
+/* --------------------------- Cookie helpers --------------------------- */
+function setCookie(name, value, days = 365) {
+  const maxAge = days * 24 * 60 * 60;
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(String(value))}; max-age=${maxAge}; path=/; samesite=lax`;
+}
+function getCookie(name) {
+  const key = encodeURIComponent(name) + "=";
+  const parts = document.cookie.split(";").map(s => s.trim());
+  for (const p of parts) {
+    if (p.startsWith(key)) return decodeURIComponent(p.slice(key.length));
+  }
+  return null;
+}
+
+/* --------------------------- DOM --------------------------- */
 // Tabs / views
 const tabList = el("tabList");
 const tabForm = el("tabForm");
@@ -25,6 +42,8 @@ const viewStats = el("viewStats");
 const recordsTbody = el("recordsTbody");
 const searchInput = el("searchInput");
 const statusFilter = el("statusFilter");
+const sortSelect = el("sortSelect");
+const pageSizeSelect = el("pageSizeSelect");
 const newBtn = el("newBtn");
 
 // Pager controls
@@ -42,6 +61,7 @@ const genreInput = el("genre");
 const yearInput = el("year");
 const ratingInput = el("rating");
 const statusInput = el("status");
+const imageUrlInput = el("image_url");
 const notesInput = el("notes");
 const cancelBtn = el("cancelBtn");
 const deleteBtn = el("deleteBtn");
@@ -49,15 +69,15 @@ const formError = el("formError");
 
 // Stats controls
 const statTotal = el("statTotal");
-const statCompleted = el("statCompleted");
+const statPageSize = el("statPageSize");
 const statAvgRating = el("statAvgRating");
 const statTopGenre = el("statTopGenre");
 const statusBreakdown = el("statusBreakdown");
 
-// Paging state (fixed page size required by rubric)
+// State
 let currentPage = 1;
 let totalPages = 1;
-const pageSize = 10;
+let pageSize = Number(getCookie("pageSize")) || 10;
 
 // Current page items only
 let records = [];
@@ -74,18 +94,31 @@ async function apiFetch(path, options = {}) {
   const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null);
 
   if (!res.ok) {
-    const message = (data && typeof data === "object" && data.error) ? data.error : `Request failed (${res.status})`;
+    const message =
+      (data && typeof data === "object" && data.error)
+        ? data.error
+        : `Request failed (${res.status})`;
     throw new Error(message);
   }
   return data;
 }
 
-async function apiGetRecords({ page, search, status }) {
+function getSortParts() {
+  // value like "title:asc"
+  const raw = sortSelect.value || "title:asc";
+  const [sort, dir] = raw.split(":");
+  return { sort, dir: (dir === "desc" ? "desc" : "asc") };
+}
+
+async function apiGetRecords({ page, search, status, pageSize }) {
+  const { sort, dir } = getSortParts();
   const params = new URLSearchParams({
     page: String(page),
-    pageSize: String(pageSize), // backend enforces 10 anyway
+    pageSize: String(pageSize),
     search: search || "",
     status: status || "ALL",
+    sort,
+    dir
   });
   return apiFetch(`/api/records?${params.toString()}`, { method: "GET" });
 }
@@ -147,6 +180,8 @@ function validateFormData(data) {
 
   if (!data.status) errs.push("Status is required.");
 
+  if (!data.image_url || data.image_url.trim().length === 0) errs.push("Image URL is required.");
+
   if (data.rating !== null) {
     if (!Number.isInteger(data.rating)) errs.push("Rating must be a whole number.");
     if (data.rating < 1 || data.rating > 10) errs.push("Rating must be between 1 and 10.");
@@ -168,10 +203,34 @@ function escapeHtml(str) {
 function renderList() {
   recordsTbody.innerHTML = "";
 
-  for (const r of records) {
+  if (!records || records.length === 0) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${escapeHtml(r.title)}</td>
+      <td colspan="8" class="muted" style="padding:16px;">
+        No records found. Try a different search/filter.
+      </td>
+    `;
+    recordsTbody.appendChild(tr);
+    return;
+  }
+
+  for (const r of records) {
+    const tr = document.createElement("tr");
+
+    const safeImg = escapeHtml(r.image_url || "");
+    const safeTitle = escapeHtml(r.title || "Untitled");
+
+    tr.innerHTML = `
+      <td>
+        <img
+          class="thumb"
+          src="${safeImg}"
+          alt="${safeTitle}"
+          loading="lazy"
+          onerror="this.src='https://via.placeholder.com/84x120?text=No+Image'; this.onerror=null;"
+        />
+      </td>
+      <td>${safeTitle}</td>
       <td>${escapeHtml(r.type)}</td>
       <td>${escapeHtml(r.genre)}</td>
       <td>${r.year}</td>
@@ -197,10 +256,13 @@ async function refreshStats() {
   const stats = await apiGetStats();
 
   statTotal.textContent = String(stats.totalRecords ?? "—");
-  statCompleted.textContent = String(stats.completedCount ?? "—");
-  statAvgRating.textContent = (stats.avgRatingCompleted === null || stats.avgRatingCompleted === undefined)
-    ? "—"
-    : String(stats.avgRatingCompleted);
+  statPageSize.textContent = String(pageSize);
+
+  statAvgRating.textContent =
+    (stats.avgRatingCompleted === null || stats.avgRatingCompleted === undefined)
+      ? "—"
+      : String(stats.avgRatingCompleted);
+
   statTopGenre.textContent = stats.topGenre ? String(stats.topGenre) : "—";
 
   statusBreakdown.innerHTML = "";
@@ -216,6 +278,7 @@ async function refreshStats() {
 async function refreshFromServer() {
   const data = await apiGetRecords({
     page: currentPage,
+    pageSize,
     search: searchInput.value.trim(),
     status: statusFilter.value,
   });
@@ -237,6 +300,7 @@ function clearForm() {
   yearInput.value = "";
   ratingInput.value = "";
   statusInput.value = "";
+  imageUrlInput.value = "";
   notesInput.value = "";
   formError.classList.add("hidden");
   formError.textContent = "";
@@ -252,6 +316,7 @@ function fillForm(r) {
   yearInput.value = r.year;
   ratingInput.value = r.rating ?? "";
   statusInput.value = r.status;
+  imageUrlInput.value = r.image_url ?? "";
   notesInput.value = r.notes ?? "";
   deleteBtn.classList.remove("hidden");
   formTitle.textContent = "Edit Record";
@@ -278,7 +343,7 @@ newBtn.addEventListener("click", () => {
   goForm();
 });
 
-// Search/filter must reset to page 1
+// Search/filter/sort should reset to page 1
 searchInput.addEventListener("input", async () => {
   currentPage = 1;
   await refreshFromServer();
@@ -289,7 +354,20 @@ statusFilter.addEventListener("change", async () => {
   await refreshFromServer();
 });
 
-// Pager buttons
+sortSelect.addEventListener("change", async () => {
+  currentPage = 1;
+  await refreshFromServer();
+});
+
+pageSizeSelect.addEventListener("change", async () => {
+  pageSize = Number(pageSizeSelect.value) || 10;
+  setCookie("pageSize", pageSize, 365);
+  currentPage = 1;
+  await refreshFromServer();
+  await refreshStats();
+});
+
+// Pager
 prevBtn.addEventListener("click", async () => {
   if (currentPage > 1) {
     currentPage--;
@@ -325,7 +403,6 @@ recordsTbody.addEventListener("click", async (e) => {
     try {
       await apiDeleteRecord(id);
 
-      // Refresh current page; if page becomes empty, go back one page
       await refreshFromServer();
       if (records.length === 0 && currentPage > 1) {
         currentPage--;
@@ -350,6 +427,7 @@ recordForm.addEventListener("submit", async (e) => {
     year: Number.parseInt(yearInput.value, 10),
     rating: ratingInput.value.trim() === "" ? null : Number.parseInt(ratingInput.value, 10),
     status: statusInput.value,
+    image_url: imageUrlInput.value.trim(),
     notes: notesInput.value.trim(),
   };
 
@@ -365,11 +443,9 @@ recordForm.addEventListener("submit", async (e) => {
   try {
     if (id) {
       await apiUpdateRecord(id, data);
-      // stay on same page
     } else {
       await apiCreateRecord(data);
-      // recommended: jump to page 1 so new item shows immediately
-      currentPage = 1;
+      currentPage = 1; // show newest in first page (depends on backend sort)
     }
 
     await refreshFromServer();
@@ -409,6 +485,9 @@ deleteBtn.addEventListener("click", async () => {
 /* --------------------------- Init --------------------------- */
 async function init() {
   try {
+    // initialize page size select from cookie
+    pageSizeSelect.value = String(pageSize);
+
     goList();
     await refreshFromServer();
     await refreshStats();
@@ -427,4 +506,3 @@ if (document.readyState === "loading") {
 } else {
   init();
 }
-
